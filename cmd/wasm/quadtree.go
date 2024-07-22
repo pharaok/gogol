@@ -98,6 +98,53 @@ func (n *Node) set(x, y int32, value uint8) {
 	n.child(x, y).set(cx, cy, value)
 }
 
+func (n *Node) getPseudoChild(x, y int32) *Node {
+	if n.level <= leafLevel+1 {
+		return nil
+	}
+
+	pseudoNode := NewNode(n.level - 1)
+	if n.children[0] == nil {
+		return pseudoNode
+	}
+
+
+	// index map
+	// 0 1 4 5
+	// 2 3 6 7
+	// 8 9 C D
+	// A B E F
+
+	gcs := make([]*Node, 16) // grandchildren
+	for i, c := range n.children {
+		for j, gc := range c.children {
+			gcs[i*4+j] = gc
+		}
+	}
+
+	switch {
+	case x == -1 && y == -1:
+		return n.children[0] 
+	case x == 0 && y == -1:
+		pseudoNode.children = [...]*Node{ gcs[1], gcs[4], gcs[3], gcs[6]}
+	case x == 1 && y == -1:
+		return n.children[1] 
+	case x == -1 && y == 0:
+		pseudoNode.children = [...]*Node{ gcs[2], gcs[3], gcs[8], gcs[9]}
+	case x == 0 && y == 0:
+		pseudoNode.children = [...]*Node{ gcs[3], gcs[6], gcs[9], gcs[12]}
+	case x == 1 && y == 0:
+		pseudoNode.children = [...]*Node{ gcs[6], gcs[7], gcs[12], gcs[13]}
+	case x == -1 && y == 1:
+		return n.children[2] 
+	case x == 0 && y == 1:
+		pseudoNode.children = [...]*Node{ gcs[9], gcs[12], gcs[11], gcs[14]}
+	case x == 1 && y == 1:
+		return n.children[3] 
+	}
+	return pseudoNode
+}
+
 func (n *Node) deepCopy() *Node {
 	newNode := NewNode(n.level)
 	if n.children[0] == nil {
