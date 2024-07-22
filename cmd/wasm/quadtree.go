@@ -54,7 +54,9 @@ func (n *Node) get(x, y int32) uint8 {
 	}
 }
 func (n *Node) set(x, y int32, value uint8) {
-	// TODO: deep copy if n._hash != 0
+	if n._hash != 0 {
+		*n = *n.deepCopy()
+	}
 
 	if n.level == leafLevel {
 		x += int32(leafHalfSize)
@@ -79,6 +81,18 @@ func (n *Node) set(x, y int32, value uint8) {
 	case x >= 0 && y >= 0:
 		n.children[3].set(x-quarterSize, y-quarterSize, value)
 	}
+}
+
+func (n *Node) deepCopy() *Node {
+	newNode := NewNode(n.level)
+	if n.children[0] == nil {
+		copy(newNode.value[:], n.value[:])
+	} else {
+		for i, c := range n.children {
+			newNode.children[i] = c.deepCopy()
+		}
+	}
+	return newNode
 }
 
 func (n *Node) hash(h maphash.Hash) uint64 {
