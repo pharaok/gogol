@@ -28,6 +28,28 @@ func (n *Node) subdivide() {
 	}
 }
 
+func (n *Node) child(x, y int32) *Node {
+	switch {
+	case x < 0 && y < 0:
+		return n.children[0]
+	case x >= 0 && y < 0:
+		return n.children[1]
+	case x < 0 && y >= 0:
+		return n.children[2]
+	case x >= 0 && y >= 0:
+		return n.children[3]
+	default:
+		return nil
+	}
+}
+func (n *Node) toChildCoords(x, y int32) (int32, int32) {
+	quarterSize := int32(1 << (n.level - 2))
+	halfSize := quarterSize << 1
+	x = (x+halfSize)%halfSize - quarterSize
+	y = (y+halfSize)%halfSize - quarterSize
+	return x, y
+}
+
 func (n *Node) get(x, y int32) uint8 {
 	if n.level == leafLevel {
 		x += int32(leafHalfSize)
@@ -39,19 +61,7 @@ func (n *Node) get(x, y int32) uint8 {
 		return 0
 	}
 
-	quarterSize := int32(1 << (n.level - 2))
-	switch {
-	case x < 0 && y < 0:
-		return n.children[0].get(x+quarterSize, y+quarterSize)
-	case x >= 0 && y < 0:
-		return n.children[1].get(x-quarterSize, y+quarterSize)
-	case x < 0 && y >= 0:
-		return n.children[2].get(x+quarterSize, y-quarterSize)
-	case x >= 0 && y >= 0:
-		return n.children[3].get(x-quarterSize, y-quarterSize)
-	default:
-		return 0
-	}
+	return n.child(x, y).get(n.toChildCoords(x, y))
 }
 func (n *Node) set(x, y int32, value uint8) {
 	if n._hash != 0 {
@@ -69,18 +79,8 @@ func (n *Node) set(x, y int32, value uint8) {
 		n.subdivide()
 	}
 
-	quarterSize := int32(1 << (n.level - 2))
-
-	switch {
-	case x < 0 && y < 0:
-		n.children[0].set(x+quarterSize, y+quarterSize, value)
-	case x >= 0 && y < 0:
-		n.children[1].set(x-quarterSize, y+quarterSize, value)
-	case x < 0 && y >= 0:
-		n.children[2].set(x+quarterSize, y-quarterSize, value)
-	case x >= 0 && y >= 0:
-		n.children[3].set(x-quarterSize, y-quarterSize, value)
-	}
+	cx, cy := n.toChildCoords(x, y)
+	n.child(x, y).set(cx, cy, value)
 }
 
 func (n *Node) deepCopy() *Node {
