@@ -5,6 +5,16 @@ import (
 	"hash/maphash"
 )
 
+func sign(x int32) int32 {
+
+	if x < 0 {
+		return -1
+	} else if x > 0 {
+		return 1
+	}
+	return 0
+}
+
 const leafLevel uint64 = 1
 const leafHalfSize uint64 = 1 << (leafLevel - 1)
 
@@ -71,7 +81,12 @@ func (n *Node) set(x, y int32, value uint8) {
 	if n.level == leafLevel {
 		x += int32(leafHalfSize)
 		y += int32(leafHalfSize)
-		n.value[x+y*2*int32(leafHalfSize)] = value
+		i := x + y*2*int32(leafHalfSize)
+
+		d := int64(sign(int32(value)) - sign(int32(n.value[i])))
+		n.population = uint64(int64(n.population) + d)
+
+		n.value[i] = value
 		return
 	}
 
