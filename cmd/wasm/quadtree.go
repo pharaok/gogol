@@ -5,7 +5,7 @@ import (
 	"hash/maphash"
 )
 
-func sign(x int32) int32 {
+func sign(x int) int {
 	if x < 0 {
 		return -1
 	} else if x > 0 {
@@ -14,13 +14,13 @@ func sign(x int32) int32 {
 	return 0
 }
 
-const leafLevel uint64 = 1
-const leafHalfSize uint64 = 1 << (leafLevel - 1)
+const leafLevel = 1
+const leafHalfSize = 1 << (leafLevel - 1)
 
 type Node struct {
 	value      [leafHalfSize * leafHalfSize * 4]uint8
 	children   [4]*Node // nw ne sw se
-	_hash      uint64
+	hash       uint64
 	population uint64
 	level      uint64
 }
@@ -30,8 +30,21 @@ func NewNode(level uint64) *Node {
 		level: level,
 	}
 }
+func NewNodeWithChildren(children [4]*Node) *Node {
+	level := children[0].level
+	for _, c := range children {
+		if c.level != level {
+			return nil
+		}
+	}
 
-func (n *Node) subdivide() {
+	return &Node{
+		level:    level + 1,
+		children: children,
+	}
+}
+
+func (n *Node) Subdivide() {
 	if n.children[0] != nil {
 		return
 	}
@@ -39,13 +52,13 @@ func (n *Node) subdivide() {
 		n.children[i] = NewNode(n.level - 1)
 	}
 }
-func (n *Node) grow(x, y int32) {
+func (n *Node) Grow(x, y int) {
 	grown := NewNode(n.level + 1)
 	grown.setPseudoChild(-x, -y, n)
 	*n = *grown
 }
 
-func (n *Node) child(x, y int32) *Node {
+func (n *Node) Child(x, y int) *Node {
 	switch {
 	case x < 0 && y < 0:
 		return n.children[0]
@@ -59,64 +72,59 @@ func (n *Node) child(x, y int32) *Node {
 		return nil
 	}
 }
-func (n *Node) toChildCoords(x, y int32) (int32, int32) {
-	quarterSize := int32(1 << (n.level - 2))
+func (n *Node) ToChildCoords(x, y int) (int, int) {
+	quarterSize := 1 << (n.level - 2)
 	halfSize := quarterSize << 1
 	x = (x+halfSize)%halfSize - quarterSize
 	y = (y+halfSize)%halfSize - quarterSize
 	return x, y
 }
 
-func (n *Node) get(x, y int32) uint8 {
+func (n *Node) Get(x, y int) uint8 {
 	if n.level == leafLevel {
-		x += int32(leafHalfSize)
-		y += int32(leafHalfSize)
-		return n.value[x+y*2*int32(leafHalfSize)]
+		x += leafHalfSize
+		y += leafHalfSize
+		return n.value[x+y*2*leafHalfSize]
 	}
 
 	if n.children[0] == nil {
 		return 0
 	}
 
-	return n.child(x, y).get(n.toChildCoords(x, y))
+	return n.Child(x, y).Get(n.ToChildCoords(x, y))
 }
-func (n *Node) set(x, y int32, value uint8) {
-	if n._hash != 0 {
-		*n = *n.deepCopy()
+func (n *Node) Set(x, y int, value uint8) int {
+	if n.hash != 0 {
+		*n = *n.DeepCopy()
 	}
 
 	if n.level == leafLevel {
-		x += int32(leafHalfSize)
-		y += int32(leafHalfSize)
-		i := x + y*2*int32(leafHalfSize)
+		x += leafHalfSize
+		y += leafHalfSize
+		i := x + y*2*leafHalfSize
 
-		d := int64(sign(int32(value)) - sign(int32(n.value[i])))
-		n.population = uint64(int64(n.population) + d)
-
+		d := int(sign(int(value)) - sign(int(n.value[i])))
+		n.population = uint64(int(n.population) + d)
 		n.value[i] = value
-		return
+		return d
 	}
 
-	if n.children[0] == nil {
-		n.subdivide()
-	}
-
-	cx, cy := n.toChildCoords(x, y)
-	n.child(x, y).set(cx, cy, value)
+	n.Subdivide()
+	cx, cy := n.ToChildCoords(x, y)
+	d := n.Child(x, y).Set(cx, cy, value)
+	n.population = uint64(int(n.population) + d)
+	return d
 }
 
-func (n *Node) getPseudoQuads(x, y int32) [4]*Node { // nw ne sw se
+func (n *Node) GetPseudoQuads(x, y int) [4]*Node { // nw ne sw se
 	if n.level < leafLevel+2 {
 		return [4]*Node{}
 	}
 
-	if n.children[0] == nil {
-		n.subdivide()
-	}
-
+	n.Subdivide()
 	gcs := make([]*Node, 16) // grandchildren
 	for i, c := range n.children {
-		c.subdivide()
+		c.Subdivide()
 		for j, gc := range c.children {
 			gcs[i*4+j] = gc
 		}
@@ -150,7 +158,7 @@ func (n *Node) getPseudoQuads(x, y int32) [4]*Node { // nw ne sw se
 	}
 	return [4]*Node{}
 }
-func (n *Node) getPseudoChild(x, y int32) *Node {
+func (n *Node) GetPseudoChild(x, y int) *Node {
 	if n.level < leafLevel+2 {
 		return nil
 	}
@@ -160,38 +168,39 @@ func (n *Node) getPseudoChild(x, y int32) *Node {
 		return pseudoNode
 	}
 
-	pseudoNode.children = n.getPseudoQuads(x, y)
+	pseudoNode.children = n.GetPseudoQuads(x, y)
 	return pseudoNode
 }
-func (n *Node) setPseudoChild(x, y int32, node *Node) {
+func (n *Node) setPseudoChild(x, y int, node *Node) {
 	if n.level < leafLevel+2 || node.level != n.level-1 {
 		return
 	}
 
-	if n._hash != 0 {
-		*n = *n.deepCopy()
+	if n.hash != 0 {
+		*n = *n.DeepCopy()
 	}
 
-	for i, q := range n.getPseudoQuads(x, y) {
+	for i, q := range n.GetPseudoQuads(x, y) {
 		*q = *node.children[i]
 	}
 }
 
-func (n *Node) deepCopy() *Node {
+func (n *Node) DeepCopy() *Node {
 	newNode := NewNode(n.level)
+	newNode.population = n.population
 	if n.children[0] == nil {
 		copy(newNode.value[:], n.value[:])
 	} else {
 		for i, c := range n.children {
-			newNode.children[i] = c.deepCopy()
+			newNode.children[i] = c.DeepCopy()
 		}
 	}
 	return newNode
 }
 
-func (n *Node) hash(h maphash.Hash) uint64 {
-	if n._hash != 0 {
-		return n._hash
+func (n *Node) Hash(h maphash.Hash) uint64 {
+	if n.hash != 0 {
+		return n.hash
 	}
 
 	if n.children[0] == nil {
@@ -205,11 +214,13 @@ func (n *Node) hash(h maphash.Hash) uint64 {
 	} else {
 		for _, c := range n.children {
 			hashBytes := make([]byte, 8)
-			binary.LittleEndian.PutUint64(hashBytes, c.hash(h))
+			ch := maphash.Hash{}
+			ch.SetSeed(h.Seed())
+			binary.LittleEndian.PutUint64(hashBytes, c.Hash(ch))
 			h.Write(hashBytes)
 		}
 	}
 
-	n._hash = h.Sum64()
-	return n._hash
+	n.hash = h.Sum64()
+	return n.hash
 }
