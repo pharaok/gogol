@@ -6,7 +6,6 @@ import (
 )
 
 func sign(x int32) int32 {
-
 	if x < 0 {
 		return -1
 	} else if x > 0 {
@@ -33,9 +32,17 @@ func NewNode(level uint64) *Node {
 }
 
 func (n *Node) subdivide() {
+	if n.children[0] != nil {
+		return
+	}
 	for i := range n.children {
 		n.children[i] = NewNode(n.level - 1)
 	}
+}
+func (n *Node) grow(x, y int32) {
+	grown := NewNode(n.level + 1)
+	grown.setPseudoChild(-x, -y, n)
+	*n = *grown
 }
 
 func (n *Node) child(x, y int32) *Node {
@@ -98,8 +105,53 @@ func (n *Node) set(x, y int32, value uint8) {
 	n.child(x, y).set(cx, cy, value)
 }
 
+func (n *Node) getPseudoQuads(x, y int32) [4]*Node { // nw ne sw se
+	if n.level < leafLevel+2 {
+		return [4]*Node{}
+	}
+
+	if n.children[0] == nil {
+		n.subdivide()
+	}
+
+	gcs := make([]*Node, 16) // grandchildren
+	for i, c := range n.children {
+		c.subdivide()
+		for j, gc := range c.children {
+			gcs[i*4+j] = gc
+		}
+	}
+
+	// index map
+	// 0 1 4 5
+	// 2 3 6 7
+	// 8 9 C D
+	// A B E F
+
+	switch {
+	case x == -1 && y == -1:
+		return [4]*Node{gcs[0], gcs[1], gcs[2], gcs[3]}
+	case x == 0 && y == -1:
+		return [4]*Node{gcs[1], gcs[4], gcs[3], gcs[6]}
+	case x == 1 && y == -1:
+		return [4]*Node{gcs[4], gcs[5], gcs[6], gcs[7]}
+	case x == -1 && y == 0:
+		return [4]*Node{gcs[2], gcs[3], gcs[8], gcs[9]}
+	case x == 0 && y == 0:
+		return [4]*Node{gcs[3], gcs[6], gcs[9], gcs[12]}
+	case x == 1 && y == 0:
+		return [4]*Node{gcs[6], gcs[7], gcs[12], gcs[13]}
+	case x == -1 && y == 1:
+		return [4]*Node{gcs[8], gcs[9], gcs[10], gcs[11]}
+	case x == 0 && y == 1:
+		return [4]*Node{gcs[9], gcs[12], gcs[11], gcs[14]}
+	case x == 1 && y == 1:
+		return [4]*Node{gcs[12], gcs[13], gcs[14], gcs[15]}
+	}
+	return [4]*Node{}
+}
 func (n *Node) getPseudoChild(x, y int32) *Node {
-	if n.level <= leafLevel+1 {
+	if n.level < leafLevel+2 {
 		return nil
 	}
 
@@ -108,41 +160,21 @@ func (n *Node) getPseudoChild(x, y int32) *Node {
 		return pseudoNode
 	}
 
-
-	// index map
-	// 0 1 4 5
-	// 2 3 6 7
-	// 8 9 C D
-	// A B E F
-
-	gcs := make([]*Node, 16) // grandchildren
-	for i, c := range n.children {
-		for j, gc := range c.children {
-			gcs[i*4+j] = gc
-		}
-	}
-
-	switch {
-	case x == -1 && y == -1:
-		return n.children[0] 
-	case x == 0 && y == -1:
-		pseudoNode.children = [...]*Node{ gcs[1], gcs[4], gcs[3], gcs[6]}
-	case x == 1 && y == -1:
-		return n.children[1] 
-	case x == -1 && y == 0:
-		pseudoNode.children = [...]*Node{ gcs[2], gcs[3], gcs[8], gcs[9]}
-	case x == 0 && y == 0:
-		pseudoNode.children = [...]*Node{ gcs[3], gcs[6], gcs[9], gcs[12]}
-	case x == 1 && y == 0:
-		pseudoNode.children = [...]*Node{ gcs[6], gcs[7], gcs[12], gcs[13]}
-	case x == -1 && y == 1:
-		return n.children[2] 
-	case x == 0 && y == 1:
-		pseudoNode.children = [...]*Node{ gcs[9], gcs[12], gcs[11], gcs[14]}
-	case x == 1 && y == 1:
-		return n.children[3] 
-	}
+	pseudoNode.children = n.getPseudoQuads(x, y)
 	return pseudoNode
+}
+func (n *Node) setPseudoChild(x, y int32, node *Node) {
+	if n.level < leafLevel+2 || node.level != n.level-1 {
+		return
+	}
+
+	if n._hash != 0 {
+		*n = *n.deepCopy()
+	}
+
+	for i, q := range n.getPseudoQuads(x, y) {
+		*q = *node.children[i]
+	}
 }
 
 func (n *Node) deepCopy() *Node {
@@ -163,7 +195,7 @@ func (n *Node) hash(h maphash.Hash) uint64 {
 	}
 
 	if n.children[0] == nil {
-		if n.level == 1 {
+		if n.level == leafLevel {
 			h.Write(n.value[:])
 		} else {
 			levelBytes := make([]byte, 8)
