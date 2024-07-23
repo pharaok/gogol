@@ -30,18 +30,15 @@ func NewNode(level uint64) *Node {
 		level: level,
 	}
 }
-func NewNodeWithChildren(children [4]*Node) *Node {
-	level := children[0].level
-	for _, c := range children {
-		if c.level != level {
-			return nil
-		}
+func NewNodeWithChildren(nw, ne, sw, se *Node) *Node {
+	level := nw.level
+	if ne.level != level || sw.level != level || se.level != level {
+		return nil
 	}
 
-	return &Node{
-		level:    level + 1,
-		children: children,
-	}
+	n := NewNode(level + 1)
+	n.SetChildren([4]*Node{nw, ne, sw, se})
+	return n
 }
 
 func (n *Node) Subdivide() {
@@ -54,7 +51,7 @@ func (n *Node) Subdivide() {
 }
 func (n *Node) Grow(x, y int) {
 	grown := NewNode(n.level + 1)
-	grown.setPseudoChild(-x, -y, n)
+	grown.SetPseudoChild(-x, -y, n)
 	*n = *grown
 }
 
@@ -78,6 +75,17 @@ func (n *Node) ToChildCoords(x, y int) (int, int) {
 	x = (x+halfSize)%halfSize - quarterSize
 	y = (y+halfSize)%halfSize - quarterSize
 	return x, y
+}
+func (n *Node) SetChildren(children [4]*Node) {
+	if n.hash != 0 {
+		*n = *n.DeepCopy()
+	}
+
+	n.children = children
+	n.population = 0
+	for _, c := range n.children {
+		n.population += c.population
+	}
 }
 
 func (n *Node) Get(x, y int) uint8 {
@@ -122,41 +130,20 @@ func (n *Node) GetPseudoQuads(x, y int) [4]*Node { // nw ne sw se
 	}
 
 	n.Subdivide()
-	gcs := make([]*Node, 16) // grandchildren
+	gcs := [4][4]*Node{} // grandchildren
 	for i, c := range n.children {
 		c.Subdivide()
 		for j, gc := range c.children {
-			gcs[i*4+j] = gc
+			gcs[i][j] = gc
+		}
+	}
+	for i := 0; i < 4; i += 2 {
+		for j := 0; j < 2; j++ {
+			gcs[i][j+2], gcs[i+1][j] = gcs[i+1][j], gcs[i][j+2] // swap
 		}
 	}
 
-	// index map
-	// 0 1 4 5
-	// 2 3 6 7
-	// 8 9 C D
-	// A B E F
-
-	switch {
-	case x == -1 && y == -1:
-		return [4]*Node{gcs[0], gcs[1], gcs[2], gcs[3]}
-	case x == 0 && y == -1:
-		return [4]*Node{gcs[1], gcs[4], gcs[3], gcs[6]}
-	case x == 1 && y == -1:
-		return [4]*Node{gcs[4], gcs[5], gcs[6], gcs[7]}
-	case x == -1 && y == 0:
-		return [4]*Node{gcs[2], gcs[3], gcs[8], gcs[9]}
-	case x == 0 && y == 0:
-		return [4]*Node{gcs[3], gcs[6], gcs[9], gcs[12]}
-	case x == 1 && y == 0:
-		return [4]*Node{gcs[6], gcs[7], gcs[12], gcs[13]}
-	case x == -1 && y == 1:
-		return [4]*Node{gcs[8], gcs[9], gcs[10], gcs[11]}
-	case x == 0 && y == 1:
-		return [4]*Node{gcs[9], gcs[12], gcs[11], gcs[14]}
-	case x == 1 && y == 1:
-		return [4]*Node{gcs[12], gcs[13], gcs[14], gcs[15]}
-	}
-	return [4]*Node{}
+	return [4]*Node{gcs[y+1][x+1], gcs[y+1][x+2], gcs[y+2][x+1], gcs[y+2][x+2]}
 }
 func (n *Node) GetPseudoChild(x, y int) *Node {
 	if n.level < leafLevel+2 {
@@ -168,10 +155,10 @@ func (n *Node) GetPseudoChild(x, y int) *Node {
 		return pseudoNode
 	}
 
-	pseudoNode.children = n.GetPseudoQuads(x, y)
+	pseudoNode.SetChildren(n.GetPseudoQuads(x, y))
 	return pseudoNode
 }
-func (n *Node) setPseudoChild(x, y int, node *Node) {
+func (n *Node) SetPseudoChild(x, y int, node *Node) {
 	if n.level < leafLevel+2 || node.level != n.level-1 {
 		return
 	}
@@ -181,7 +168,9 @@ func (n *Node) setPseudoChild(x, y int, node *Node) {
 	}
 
 	for i, q := range n.GetPseudoQuads(x, y) {
+		n.population -= q.population
 		*q = *node.children[i]
+		n.population += q.population
 	}
 }
 

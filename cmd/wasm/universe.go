@@ -54,7 +54,7 @@ func NewUniverse() *Universe {
 	}
 }
 
-func (u *Universe) step(n *Node) *Node {
+func (u *Universe) stepNode(n *Node) *Node {
 	if n.population == 0 {
 		return NewNode(n.level - 1)
 	}
@@ -83,7 +83,21 @@ func (u *Universe) step(n *Node) *Node {
 			}
 		}
 	} else {
-		// TODO:
+		s := [3][3]*Node{}
+		for y := -1; y <= 1; y++ {
+			for x := -1; x <= 1; x++ {
+				s[y+1][x+1] = u.stepNode(n.GetPseudoChild(x, y))
+			}
+		}
+
+		children := [4]*Node{
+			u.stepNode(NewNodeWithChildren(s[0][0], s[0][1], s[1][0], s[1][1])),
+			u.stepNode(NewNodeWithChildren(s[0][1], s[0][2], s[1][1], s[1][2])),
+			u.stepNode(NewNodeWithChildren(s[1][0], s[1][1], s[2][0], s[2][1])),
+			u.stepNode(NewNodeWithChildren(s[1][1], s[1][2], s[2][1], s[2][2])),
+		}
+
+		next.SetChildren(children)
 	}
 
 	u.cache[hash] = next
