@@ -18,8 +18,8 @@ func (g *LeafParentGrid) NeighborCount(x, y int) int {
 	return pop
 }
 
-func (g *LeafParentGrid) Step() {
-	for i := 1; i <= leafLevel; i++ {
+func (g *LeafParentGrid) Step(generations int) {
+	for i := 1; i <= min(leafLevel, generations); i++ {
 		nextGrid := LeafParentGrid{}
 		for y := i; y < 2*leafSize-i; y++ {
 			for x := i; x < 2*leafSize-i; x++ {
@@ -40,15 +40,16 @@ func (g *LeafParentGrid) Step() {
 }
 
 type Universe struct {
-	root   *Node
-	cache  map[uint64]*Node
-	hasher maphash.Hash
+	root       *Node
+	cache      map[uint64]*Node // TODO: LRU
+	hasher     maphash.Hash
+	generation uint64
 	// TODO:history
 }
 
-func NewUniverse() *Universe {
+func NewUniverse(level uint64) *Universe {
 	return &Universe{
-		root:   NewNode(leafLevel + 2),
+		root:   NewNode(level),
 		cache:  make(map[uint64]*Node),
 		hasher: maphash.Hash{},
 	}
@@ -75,7 +76,7 @@ func (u *Universe) stepNode(n *Node, generations int) *Node {
 			}
 		}
 
-		grid.Step()
+		grid.Step(1 << generations)
 
 		for y := -leafHalfSize; y < leafHalfSize; y++ {
 			for x := -leafHalfSize; x < leafHalfSize; x++ {
@@ -109,4 +110,19 @@ func (u *Universe) stepNode(n *Node, generations int) *Node {
 		u.cache[hash] = next
 	}
 	return next
+}
+
+func (u *Universe) Step(generations int) {
+	generations = min(generations, int(u.root.level-2))
+	u.root = u.stepNode(u.root, generations)
+	u.root.Grow(0, 0)
+	u.generation += 1 << generations
+}
+
+func (u *Universe) Get(x, y int) uint8 {
+	return u.root.Get(x, y)
+}
+func (u *Universe) Set(x, y int, value uint8) {
+	u.root.Set(x, y, value)
+	u.generation = 0
 }
