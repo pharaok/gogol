@@ -56,7 +56,7 @@ func NewUniverse(level uint64) *Universe {
 }
 
 func (u *Universe) stepNode(n *Node, generations int) *Node {
-	if n.population == 0 {
+	if n.population < 3 {
 		return NewNode(n.level - 1)
 	}
 
@@ -67,7 +67,6 @@ func (u *Universe) stepNode(n *Node, generations int) *Node {
 	}
 
 	next := NewNode(n.level - 1)
-
 	if n.level == leafLevel+1 {
 		grid := LeafParentGrid{}
 		for y := -leafSize; y < leafSize; y++ {
@@ -100,6 +99,10 @@ func (u *Universe) stepNode(n *Node, generations int) *Node {
 		if uint64(generations)+2 >= n.level {
 			for i, c := range children {
 				children[i] = u.stepNode(c, generations)
+			}
+		} else {
+			for i, c := range children {
+				children[i] = c.GetPseudoChild(0, 0)
 			}
 		}
 

@@ -77,6 +77,14 @@ func (n *Node) ToChildCoords(x, y int) (int, int) {
 	return x, y
 }
 func (n *Node) SetChildren(children [4]*Node) {
+	if n.level <= leafLevel {
+		return
+	}
+	for _, c := range children {
+		if c.level != n.level-1 {
+			return
+		}
+	}
 	if n.hash != 0 {
 		*n = *n.DeepCopy()
 	}
@@ -92,7 +100,7 @@ func (n *Node) Get(x, y int) uint8 {
 	if n.level == leafLevel {
 		x += leafHalfSize
 		y += leafHalfSize
-		return n.value[x+y*2*leafHalfSize]
+		return n.value[y*2*leafHalfSize+x]
 	}
 
 	if n.children[0] == nil {
@@ -146,8 +154,16 @@ func (n *Node) GetPseudoQuads(x, y int) [4]*Node { // nw ne sw se
 	return [4]*Node{gcs[y+1][x+1], gcs[y+1][x+2], gcs[y+2][x+1], gcs[y+2][x+2]}
 }
 func (n *Node) GetPseudoChild(x, y int) *Node {
-	if n.level < leafLevel+2 {
+	if n.level < leafLevel+1 {
 		return nil
+	} else if n.level == leafLevel+1 { // edge case
+		pseudoNode := NewNode(leafLevel)
+		for yy := -leafHalfSize; yy < leafHalfSize; yy++ {
+			for xx := -leafHalfSize; xx < leafHalfSize; xx++ {
+				pseudoNode.Set(xx, yy, n.Get(x+xx, y+yy))
+			}
+		}
+		return pseudoNode
 	}
 
 	pseudoNode := NewNode(n.level - 1)
