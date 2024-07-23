@@ -54,14 +54,14 @@ func NewUniverse() *Universe {
 	}
 }
 
-func (u *Universe) stepNode(n *Node) *Node {
+func (u *Universe) stepNode(n *Node, generations int) *Node {
 	if n.population == 0 {
 		return NewNode(n.level - 1)
 	}
 
 	u.hasher.Reset()
 	hash := n.Hash(u.hasher)
-	if cached, ok := u.cache[hash]; ok {
+	if cached, ok := u.cache[hash]; ok && uint64(generations)+2 >= n.level {
 		return cached
 	}
 
@@ -86,20 +86,27 @@ func (u *Universe) stepNode(n *Node) *Node {
 		s := [3][3]*Node{}
 		for y := -1; y <= 1; y++ {
 			for x := -1; x <= 1; x++ {
-				s[y+1][x+1] = u.stepNode(n.GetPseudoChild(x, y))
+				s[y+1][x+1] = u.stepNode(n.GetPseudoChild(x, y), generations)
 			}
 		}
 
 		children := [4]*Node{
-			u.stepNode(NewNodeWithChildren(s[0][0], s[0][1], s[1][0], s[1][1])),
-			u.stepNode(NewNodeWithChildren(s[0][1], s[0][2], s[1][1], s[1][2])),
-			u.stepNode(NewNodeWithChildren(s[1][0], s[1][1], s[2][0], s[2][1])),
-			u.stepNode(NewNodeWithChildren(s[1][1], s[1][2], s[2][1], s[2][2])),
+			NewNodeWithChildren(s[0][0], s[0][1], s[1][0], s[1][1]),
+			NewNodeWithChildren(s[0][1], s[0][2], s[1][1], s[1][2]),
+			NewNodeWithChildren(s[1][0], s[1][1], s[2][0], s[2][1]),
+			NewNodeWithChildren(s[1][1], s[1][2], s[2][1], s[2][2]),
+		}
+		if uint64(generations)+2 >= n.level {
+			for i, c := range children {
+				children[i] = u.stepNode(c, generations)
+			}
 		}
 
 		next.SetChildren(children)
 	}
 
-	u.cache[hash] = next
+	if uint64(generations)+2 >= n.level {
+		u.cache[hash] = next
+	}
 	return next
 }
