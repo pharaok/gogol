@@ -1,4 +1,4 @@
-BINARY_NAME=go.wasm
+BINARY_NAME=gogol.wasm
 
 build:
-	GOOS=js GOARCH=wasm go build -o ./assets/${BINARY_NAME} ./cmd/wasm/
+	tinygo build -target wasm -o ./assets/${BINARY_NAME} ./cmd/wasm 

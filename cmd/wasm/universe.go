@@ -117,8 +117,8 @@ func (u *Universe) stepNode(n *Node, generations int) *Node {
 
 func (u *Universe) Step(generations int) {
 	generations = min(generations, int(u.root.level-2))
-	u.root = u.stepNode(u.root, generations)
 	u.root.Grow(0, 0)
+	u.root = u.stepNode(u.root, generations)
 	u.generation += 1 << generations
 }
 
