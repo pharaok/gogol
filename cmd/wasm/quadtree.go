@@ -208,14 +208,13 @@ func (n *Node) Hash(h maphash.Hash) uint64 {
 		return n.hash
 	}
 
-	if n.children[0] == nil {
-		if n.level == leafLevel {
-			h.Write(n.value[:])
-		} else {
-			levelBytes := make([]byte, 8)
-			binary.LittleEndian.PutUint64(levelBytes, n.level)
-			h.Write(levelBytes)
-		}
+	if n.level == leafLevel {
+		h.Write(n.value[:])
+	} else if n.population == 0 {
+
+		levelBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(levelBytes, n.level)
+		h.Write(levelBytes)
 	} else {
 		for _, c := range n.children {
 			hashBytes := make([]byte, 8)
