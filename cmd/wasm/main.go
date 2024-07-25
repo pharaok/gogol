@@ -1,12 +1,16 @@
+//go:build js && wasm
+
 package main
 
 import (
 	"math"
 	"syscall/js"
+
+	"github.com/pharaok/gogol/pkg/hashlife"
 )
 
 func main() {
-	universe := NewUniverse(8)
+	universe := hashlife.NewUniverse(4)
 
 	document := js.Global().Get("document")
 	canvasEl := document.Call("getElementById", "canvas")
@@ -64,7 +68,7 @@ func main() {
 		// https://github.com/tinygo-org/tinygo/issues/1140
 		switch e.Get("key").String() {
 		case " ":
-			universe.Step(3)
+			universe.Step(0)
 		}
 		return nil
 	}))

@@ -1,3 +1,3 @@
-module github.com/golangbot/webassembly
+module github.com/pharaok/gogol
 
 go 1.22.4

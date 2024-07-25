@@ -1,17 +1,25 @@
+//go:build js && wasm
+
 package main
 
 import (
 	"syscall/js"
+
+	"github.com/pharaok/gogol/pkg/hashlife"
 )
 
 type Canvas struct {
 	ctx              js.Value
 	originX, originY float64
 	cellSize         float64
-	universe         *Universe
+	universe         *hashlife.Universe
 }
 
-func NewCanvas(canvasEl js.Value, universe *Universe) *Canvas {
+const LeafLevel = hashlife.LeafLevel
+const LeafHalfSize = hashlife.LeafHalfSize
+const LeafSize = hashlife.LeafSize
+
+func NewCanvas(canvasEl js.Value, universe *hashlife.Universe) *Canvas {
 	window := js.Global().Get("window")
 	width, height := window.Get("innerWidth").Int(), window.Get("innerHeight").Int()
 
@@ -41,16 +49,16 @@ func (c *Canvas) Clear() {
 	width, height := canvasEl.Get("width").Int(), canvasEl.Get("height").Int()
 	c.ctx.Call("clearRect", 0, 0, width, height)
 }
-func (c *Canvas) PaintNode(n *Node, left, top float64) {
+func (c *Canvas) PaintNode(n *hashlife.Node, left, top float64) {
 	if n == nil {
 		return
 	}
 
-	if n.level == leafLevel {
+	if n.Level == LeafLevel {
 		c.ctx.Set("fillStyle", "black")
-		for y := 0; y < leafSize; y++ {
-			for x := 0; x < leafSize; x++ {
-				if n.Get(x-leafHalfSize, y-leafHalfSize) == 1 {
+		for y := 0; y < LeafSize; y++ {
+			for x := 0; x < LeafSize; x++ {
+				if n.Get(x-LeafHalfSize, y-LeafHalfSize) == 1 {
 					sz := c.cellSize
 					c.ctx.Call("fillRect", (left+float64(x))*sz, (top+float64(y))*sz, sz, sz)
 				}
@@ -59,7 +67,7 @@ func (c *Canvas) PaintNode(n *Node, left, top float64) {
 		return
 	}
 
-	halfSize := float64(int(1) << (n.level - 1))
+	halfSize := float64(int(1) << (n.Level - 1))
 
 	c.PaintNode(n.Child(-1, -1), left, top)
 	c.PaintNode(n.Child(0, -1), left+halfSize, top)
@@ -67,9 +75,9 @@ func (c *Canvas) PaintNode(n *Node, left, top float64) {
 	c.PaintNode(n.Child(0, 0), left+halfSize, top+halfSize)
 }
 func (c *Canvas) Paint() {
-	halfSize := float64(int(1) << (c.universe.root.level - 1))
+	halfSize := float64(int(1) << (c.universe.Root.Level - 1))
 	c.Clear()
-	c.PaintNode(c.universe.root, c.originX-halfSize, c.originY-halfSize)
+	c.PaintNode(c.universe.Root, c.originX-halfSize, c.originY-halfSize)
 }
 
 func (c *Canvas) ZoomAt(factor float64, x, y int) {

@@ -1,4 +1,4 @@
-package main
+package hashlife
 
 import (
 	"encoding/binary"
@@ -14,25 +14,32 @@ func sign(x int) int {
 	return 0
 }
 
-const leafLevel = 1
-const leafHalfSize = 1 << (leafLevel - 1)
+func hasherWriteUint64(h *maphash.Hash, x uint64) {
+	hashBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(hashBytes, x)
+	h.Write(hashBytes)
+}
+
+const LeafLevel = 1
+const LeafHalfSize = 1 << (LeafLevel - 1)
+const LeafSize int = LeafHalfSize << 1
 
 type Node struct {
-	value      [leafHalfSize * leafHalfSize * 4]uint8
-	children   [4]*Node // nw ne sw se
+	Value      [LeafHalfSize * LeafHalfSize * 4]uint8
+	Children   [4]*Node // nw ne sw se
 	hash       uint64
-	population uint64
-	level      uint64
+	Population uint64
+	Level      uint64
 }
 
 func NewNode(level uint64) *Node {
 	return &Node{
-		level: level,
+		Level: level,
 	}
 }
 func NewNodeWithChildren(nw, ne, sw, se *Node) *Node {
-	level := nw.level
-	if ne.level != level || sw.level != level || se.level != level {
+	level := nw.Level
+	if ne.Level != level || sw.Level != level || se.Level != level {
 		return nil
 	}
 
@@ -42,15 +49,16 @@ func NewNodeWithChildren(nw, ne, sw, se *Node) *Node {
 }
 
 func (n *Node) Subdivide() {
-	if n.children[0] != nil {
+	if n.Children[0] != nil {
 		return
 	}
-	for i := range n.children {
-		n.children[i] = NewNode(n.level - 1)
+	for i := range n.Children {
+		n.Children[i] = NewNode(n.Level - 1)
 	}
 }
 func (n *Node) Grow(x, y int) {
-	grown := NewNode(n.level + 1)
+	n.Subdivide()
+	grown := NewNode(n.Level + 1)
 	grown.SetPseudoChild(-x, -y, n)
 	*n = *grown
 }
@@ -58,30 +66,30 @@ func (n *Node) Grow(x, y int) {
 func (n *Node) Child(x, y int) *Node {
 	switch {
 	case x < 0 && y < 0:
-		return n.children[0]
+		return n.Children[0]
 	case x >= 0 && y < 0:
-		return n.children[1]
+		return n.Children[1]
 	case x < 0 && y >= 0:
-		return n.children[2]
+		return n.Children[2]
 	case x >= 0 && y >= 0:
-		return n.children[3]
+		return n.Children[3]
 	default:
 		return nil
 	}
 }
 func (n *Node) ToChildCoords(x, y int) (int, int) {
-	quarterSize := 1 << (n.level - 2)
+	quarterSize := 1 << (n.Level - 2)
 	halfSize := quarterSize << 1
 	x = (x+halfSize)%halfSize - quarterSize
 	y = (y+halfSize)%halfSize - quarterSize
 	return x, y
 }
 func (n *Node) SetChildren(children [4]*Node) {
-	if n.level <= leafLevel {
+	if n.Level <= LeafLevel {
 		return
 	}
 	for _, c := range children {
-		if c.level != n.level-1 {
+		if c.Level != n.Level-1 {
 			return
 		}
 	}
@@ -89,21 +97,21 @@ func (n *Node) SetChildren(children [4]*Node) {
 		*n = *n.DeepCopy()
 	}
 
-	n.children = children
-	n.population = 0
-	for _, c := range n.children {
-		n.population += c.population
+	n.Children = children
+	n.Population = 0
+	for _, c := range n.Children {
+		n.Population += c.Population
 	}
 }
 
 func (n *Node) Get(x, y int) uint8 {
-	if n.level == leafLevel {
-		x += leafHalfSize
-		y += leafHalfSize
-		return n.value[y*2*leafHalfSize+x]
+	if n.Level == LeafLevel {
+		x += LeafHalfSize
+		y += LeafHalfSize
+		return n.Value[y*2*LeafHalfSize+x]
 	}
 
-	if n.children[0] == nil {
+	if n.Children[0] == nil {
 		return 0
 	}
 
@@ -114,34 +122,34 @@ func (n *Node) Set(x, y int, value uint8) int {
 		*n = *n.DeepCopy()
 	}
 
-	if n.level == leafLevel {
-		x += leafHalfSize
-		y += leafHalfSize
-		i := x + y*2*leafHalfSize
+	if n.Level == LeafLevel {
+		x += LeafHalfSize
+		y += LeafHalfSize
+		i := x + y*2*LeafHalfSize
 
-		d := int(sign(int(value)) - sign(int(n.value[i])))
-		n.population = uint64(int(n.population) + d)
-		n.value[i] = value
+		d := int(sign(int(value)) - sign(int(n.Value[i])))
+		n.Population = uint64(int(n.Population) + d)
+		n.Value[i] = value
 		return d
 	}
 
 	n.Subdivide()
 	cx, cy := n.ToChildCoords(x, y)
 	d := n.Child(x, y).Set(cx, cy, value)
-	n.population = uint64(int(n.population) + d)
+	n.Population = uint64(int(n.Population) + d)
 	return d
 }
 
 func (n *Node) GetPseudoQuads(x, y int) [4]*Node { // nw ne sw se
-	if n.level < leafLevel+2 {
+	if n.Level < LeafLevel+2 {
 		return [4]*Node{}
 	}
 
 	n.Subdivide()
 	gcs := [4][4]*Node{} // grandchildren
-	for i, c := range n.children {
+	for i, c := range n.Children {
 		c.Subdivide()
-		for j, gc := range c.children {
+		for j, gc := range c.Children {
 			gcs[i][j] = gc
 		}
 	}
@@ -154,20 +162,20 @@ func (n *Node) GetPseudoQuads(x, y int) [4]*Node { // nw ne sw se
 	return [4]*Node{gcs[y+1][x+1], gcs[y+1][x+2], gcs[y+2][x+1], gcs[y+2][x+2]}
 }
 func (n *Node) GetPseudoChild(x, y int) *Node {
-	if n.level < leafLevel+1 {
+	if n.Level < LeafLevel+1 {
 		return nil
-	} else if n.level == leafLevel+1 { // edge case
-		pseudoNode := NewNode(leafLevel)
-		for yy := -leafHalfSize; yy < leafHalfSize; yy++ {
-			for xx := -leafHalfSize; xx < leafHalfSize; xx++ {
+	} else if n.Level == LeafLevel+1 { // edge case
+		pseudoNode := NewNode(LeafLevel)
+		for yy := -LeafHalfSize; yy < LeafHalfSize; yy++ {
+			for xx := -LeafHalfSize; xx < LeafHalfSize; xx++ {
 				pseudoNode.Set(xx, yy, n.Get(x+xx, y+yy))
 			}
 		}
 		return pseudoNode
 	}
 
-	pseudoNode := NewNode(n.level - 1)
-	if n.children[0] == nil {
+	pseudoNode := NewNode(n.Level - 1)
+	if n.Children[0] == nil {
 		return pseudoNode
 	}
 
@@ -175,7 +183,7 @@ func (n *Node) GetPseudoChild(x, y int) *Node {
 	return pseudoNode
 }
 func (n *Node) SetPseudoChild(x, y int, node *Node) {
-	if n.level < leafLevel+2 || node.level != n.level-1 {
+	if n.Level < LeafLevel+2 || node.Level != n.Level-1 {
 		return
 	}
 
@@ -184,20 +192,20 @@ func (n *Node) SetPseudoChild(x, y int, node *Node) {
 	}
 
 	for i, q := range n.GetPseudoQuads(x, y) {
-		n.population -= q.population
-		*q = *node.children[i]
-		n.population += q.population
+		n.Population -= q.Population
+		*q = *node.Children[i]
+		n.Population += q.Population
 	}
 }
 
 func (n *Node) DeepCopy() *Node {
-	newNode := NewNode(n.level)
-	newNode.population = n.population
-	if n.children[0] == nil {
-		copy(newNode.value[:], n.value[:])
+	newNode := NewNode(n.Level)
+	newNode.Population = n.Population
+	if n.Children[0] == nil {
+		copy(newNode.Value[:], n.Value[:])
 	} else {
-		for i, c := range n.children {
-			newNode.children[i] = c.DeepCopy()
+		for i, c := range n.Children {
+			newNode.Children[i] = c.DeepCopy()
 		}
 	}
 	return newNode
@@ -208,20 +216,15 @@ func (n *Node) Hash(h maphash.Hash) uint64 {
 		return n.hash
 	}
 
-	if n.level == leafLevel {
-		h.Write(n.value[:])
-	} else if n.population == 0 {
-
-		levelBytes := make([]byte, 8)
-		binary.LittleEndian.PutUint64(levelBytes, n.level)
-		h.Write(levelBytes)
+	if n.Level == LeafLevel {
+		h.Write(n.Value[:])
+	} else if n.Population == 0 {
+		hasherWriteUint64(&h, n.Level)
 	} else {
-		for _, c := range n.children {
-			hashBytes := make([]byte, 8)
+		for _, c := range n.Children {
 			ch := maphash.Hash{}
 			ch.SetSeed(h.Seed())
-			binary.LittleEndian.PutUint64(hashBytes, c.Hash(ch))
-			h.Write(hashBytes)
+			hasherWriteUint64(&h, c.Hash(ch))
 		}
 	}
 
